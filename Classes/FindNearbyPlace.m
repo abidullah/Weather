@@ -25,30 +25,7 @@
  }
  */
 
-/********** Example ***************
- Query: http://api.geonames.org/findNearbyPlaceNameJSON?lat=37.791752&lng=-122.480210&username=rescribble
- 
- Result:
- {
- "geonames": [{
- "countryName": "United States",
- "adminCode1": "CA",
- "fclName": "city, village,...",
- "countryCode": "US",
- "lng": -122.4869164,
- "fcodeName": "section of populated place",
- "distance": "0.68903",
- "toponymName": "Seacliff",
- "fcl": "P",
- "name": "Seacliff",
- "fcode": "PPLX",
- "geonameId": 5394077,
- "lat": 37.7885406,
- "adminName1": "California",
- "population": 0
- }]
- }
-**********************/
+
 
 #import "MainViewController.h"
 #import "FindNearbyPlace.h"
@@ -134,8 +111,93 @@
      },
      ...
      */
-    // http://maps.googleapis.com/maps/api/geocode/json?latlng=37.791752,-122.480210&sensor=true&types=locality&rankby=distance
+
+    //NSString *url = [NSString stringWithFormat:@"http://api.geonames.org/findNearbyPlaceNameJSON?lat=%f&lng=%f&username=rescribble", coord.latitude, coord.longitude];
+    NSString *url = [NSString stringWithFormat:@"http://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&sensor=true&types=locality&rankby=distance", coord.latitude, coord.longitude];
+    
+    [theURL release];
+    theURL = [[NSURL URLWithString:url] retain];
+    NSURLRequest *request = [NSURLRequest requestWithURL:theURL];
+    
+    [apiConnection release];
+    apiConnection = [[NSURLConnection alloc] initWithRequest:request delegate:self];
+}
+
+#pragma mark - Lifecycle
+- (id)init {
+    self = [super init];
+    if (self) {
+        theURL = nil;
+        responseData = nil;
+        apiConnection = nil;
+        pendingRequest = NO;
+    }
+    return self;
+}
+
+-(void)dealloc {
+    [apiConnection release], apiConnection = nil;
+    [responseData release], responseData = nil;
+    [theURL release], theURL = nil;
+    [super dealloc];
+}
+#pragma mark - internals
+- (NSString*)parseGeonamesWithData:(NSMutableData *)data
+{
+    /********** Example ***************
+     Query: http://api.geonames.org/findNearbyPlaceNameJSON?lat=37.791752&lng=-122.480210&username=rescribble
+     Result:
+     {
+     "geonames": [{
+     "countryName": "United States",
+     "adminCode1": "CA",
+     "fclName": "city, village,...",
+     "countryCode": "US",
+     "lng": -122.4869164,
+     "fcodeName": "section of populated place",
+     "distance": "0.68903",
+     "toponymName": "Seacliff",
+     "fcl": "P",
+     "name": "Seacliff", // <------ this is what we need
+     "fcode": "PPLX",
+     "geonameId": 5394077,
+     "lat": 37.7885406,
+     "adminName1": "California",
+     "population": 0
+     }]
+     }
+     **********************/
+    JSONDecoder *parser = [JSONDecoder decoder]; // autoreleased
+    NSDictionary *firstLocation = [[[parser objectWithData:data] objectForKey:@"geonames"] objectAtIndex:0];
+    return [firstLocation objectForKey:@"name"];
+}
+
+- (NSDictionary*)componentWithResults:(NSArray*)results ofType:(NSString*)requestedType
+{
+    // helper function for parseGooglePlacesWithData
+    NSDictionary *neededComponent = nil;
+    for (NSDictionary *result in results) {
+        NSArray *addressComponents = [result objectForKey:@"address_components"];
+        for (NSDictionary *addressComponent in addressComponents) {
+            NSArray *types = [addressComponent objectForKey:@"types"];
+            for (NSString *type in types) {
+                if ([type isEqualToString:requestedType]) {
+                    neededComponent = addressComponent;
+                    break;
+                }
+            }
+            if (neededComponent != nil) break;
+        }
+        if (neededComponent != nil) break;
+    }
+    return neededComponent;
+}
+
+- (NSString*)parseGooglePlacesWithData:(NSMutableData*)data
+{
     /*
+     Query: http://maps.googleapis.com/maps/api/geocode/json?latlng=37.791752,-122.480210&sensor=true&types=locality&rankby=distance
+     Result:
      {
      "results" : [
      {
@@ -166,35 +228,29 @@
      "types" : [ "locality", "political" ]
      },
      ...
+    "status" : "OK"
      */
-    NSString *url = [NSString stringWithFormat:@"http://api.geonames.org/findNearbyPlaceNameJSON?lat=%f&lng=%f&username=rescribble",
-                     coord.latitude, coord.longitude];
-    
-    [theURL release];
-    theURL = [[NSURL URLWithString:url] retain];
-    NSURLRequest *request = [NSURLRequest requestWithURL:theURL];
-    
-    [apiConnection release];
-    apiConnection = [[NSURLConnection alloc] initWithRequest:request delegate:self];
-}
-
-#pragma mark - Lifecycle
-- (id)init {
-    self = [super init];
-    if (self) {
-        theURL = nil;
-        responseData = nil;
-        apiConnection = nil;
-        pendingRequest = NO;
+    JSONDecoder *parser = [JSONDecoder decoder]; // autoreleased
+    NSDictionary *root = [parser objectWithData:data];
+    NSString *status = [root objectForKey:@"status"];
+    if (![status isEqualToString:@"OK"]) {
+        return nil;
     }
-    return self;
-}
-
--(void)dealloc {
-    [apiConnection release], apiConnection = nil;
-    [responseData release], responseData = nil;
-    [theURL release], theURL = nil;
-    [super dealloc];
+    NSArray *results = [root objectForKey:@"results"];
+    
+    // first try to get neighborhood
+    NSDictionary *neededComponent = [self componentWithResults:results ofType:@"neighborhood"];
+    if (neededComponent == nil) {
+        // failing that, look for locality
+        neededComponent = [self componentWithResults:results ofType:@"locality"];
+        if (neededComponent == nil) {
+            // failing that, look for political
+            neededComponent = [self componentWithResults:results ofType:@"political"];
+        }
+    }
+    
+    // neededComponent could still be nil at this point
+    return [neededComponent objectForKey:@"long_name"];
 }
 
 #pragma mark - NSURLConnection delegate methods
@@ -205,17 +261,17 @@
     NSLog(@"@FindNearbyplace connectionDidFinishLoading");
     
     // get content using JSONKit
-    JSONDecoder *parser = [JSONDecoder decoder]; // autoreleased
-    NSDictionary *firstLocation;
+    NSString *placeName;
     @try {
-        firstLocation = [[[parser objectWithData:responseData] objectForKey:@"geonames"] objectAtIndex:0];
+        //placeName = [self parseGeonamesWithData:responseData];
+        placeName = [self parseGooglePlacesWithData:responseData];
     }
     @catch (NSException *e) {
-        firstLocation = nil;
+        placeName = nil;
         NSLog(@"Exception caught while parsing JSON");
     }
     
-    [self.delegate findNearbyPlaceDidFinish:firstLocation];
+    [self.delegate findNearbyPlaceDidFinish:placeName];
     [responseData release];
     responseData = nil;
 }
