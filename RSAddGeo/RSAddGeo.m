@@ -36,6 +36,7 @@
 @synthesize vicinity;
 @synthesize haveCoord;
 @synthesize trackLocation;
+@synthesize timeZoneId;
 
 #pragma mark - Lifecycle
 
@@ -55,6 +56,7 @@
         formatted_address = nil;
         name = nil;
         vicinity = nil;
+        timeZoneId = nil;
         //forecastTimestamp = nil;
     }
     return self;
@@ -78,6 +80,7 @@
         formatted_address = nil;
         name = nil;
         vicinity = nil;
+        timeZoneId = nil;
         //forecastTimestamp = nil;
     }
     return self;
@@ -92,6 +95,7 @@
     [formatted_address release], formatted_address = nil;
     [name release],              name = nil;
     [vicinity release],          vicinity = nil;
+    [timeZoneId release],        timeZoneId = nil;
     //[forecastTimestamp release], forecastTimestamp = nil;
     [super dealloc];
 }
@@ -102,6 +106,12 @@
         if (vicinity != locality.vicinity) {
             [vicinity release];
             vicinity = [locality.vicinity retain];
+        }
+    }
+    if ([locality.timeZoneId length] > 0) {
+        if (timeZoneId != locality.timeZoneId) {
+            [timeZoneId release];
+            timeZoneId = [locality.timeZoneId retain];
         }
     }
     if (locality.haveCoord == YES) {
@@ -172,6 +182,7 @@
         
         self.name =              [coder decodeObjectForKey:@"name"];
         self.vicinity =          [coder decodeObjectForKey:@"vicinity"];
+        self.timeZoneId =        [coder decodeObjectForKey:@"timeZoneId"];
         self.formatted_address = [coder decodeObjectForKey:@"formatted_address"];
         self.description =       [coder decodeObjectForKey:@"description"];
         self.url =               [coder decodeObjectForKey:@"url"];
@@ -192,6 +203,7 @@
     
     [coder encodeObject:name              forKey:@"name"];
     [coder encodeObject:vicinity          forKey:@"vicinity"];
+    [coder encodeObject:timeZoneId        forKey:@"timeZoneId"];
     [coder encodeObject:formatted_address forKey:@"formatted_address"];
     [coder encodeObject:description       forKey:@"description"];
     [coder encodeObject:url               forKey:@"url"];

@@ -8,23 +8,6 @@
 //  Copyright (c) 2011 Boston University. All rights reserved.
 //
 
-/* "The important part of the service is the element 'timezoneId'. The offset is redundant and only included because users have been asking for it. "
- * For timezone: http://api.geonames.org/timezoneJSON?lat=47.01&lng=10.2&username=rescribble
- {
- "time": "2012-11-29 05:37",
- "countryName": "Austria",
- "sunset": "2012-11-29 16:32",
- "rawOffset": 1,
- "dstOffset": 2,
- "countryCode": "AT",
- "gmtOffset": 1,
- "lng": 10.2,
- "sunrise": "2012-11-29 07:42",
- "timezoneId": "Europe/Vienna",
- "lat": 47.01
- }
- */
-
 
 
 #import "MainViewController.h"

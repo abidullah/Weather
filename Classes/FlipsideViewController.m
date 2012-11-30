@@ -36,6 +36,8 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
+    detailRequestStage = 0;
+    
     self.view.backgroundColor = [UIColor viewFlipsideBackgroundColor];
     if (!appDelegate) {
         appDelegate = (WeatherAppDelegate *) [[UIApplication sharedApplication] delegate];
@@ -109,9 +111,8 @@
 
     // We keep _requestedLocalityId as a temporary variable to be reused when
     // the new connection finishes
-    [_requestedLocalityId release];
-    _requestedLocalityId = [[selectedLocality apiId] retain];
-    RSLocality* currentLocality = [modelDict objectForKey:_requestedLocalityId];
+    [_requestedLocalityId release], _requestedLocalityId = [[selectedLocality apiId] retain];
+    RSLocality *currentLocality = [modelDict objectForKey:_requestedLocalityId];
     if (currentLocality) {
         [currentLocality updateFrom:selectedLocality];
     } else {
@@ -131,10 +132,13 @@
     responseData = [[NSMutableData data] retain];
 
     if (!currentLocality.haveCoord) {
-        // Perform a details request to get Latitude and Longitude data
+        // Perform a details request(s) to get Latitude, Longitude, and timezone data
+        //
         [theURL release];
-        theURL = [[NSURL URLWithString:[NSString stringWithFormat:@"https://maps.googleapis.com/maps/api/place/details/json?reference=%@&sensor=true&key=AIzaSyAU8uU4oGLZ7eTEazAf9pOr3qnYVzaYTCc", [currentLocality reference]]] retain];
+        NSString *urlString = [NSString stringWithFormat:@"https://maps.googleapis.com/maps/api/place/details/json?reference=%@&sensor=true&key=AIzaSyAU8uU4oGLZ7eTEazAf9pOr3qnYVzaYTCc", [currentLocality reference]];
+        theURL = [[NSURL URLWithString:urlString] retain];
         
+        detailRequestStage = 1;
         [apiConnection release];
         apiConnection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:theURL] delegate:self startImmediately: YES];
     }
@@ -303,52 +307,183 @@ forRowAtIndexPath:(NSIndexPath *)indexPath
 }
 
 #pragma mark - NSURLConnection delegate methods
+- (NSString*) parseGoogleTimezoneWithData: (NSMutableData*)data
+{
+    /*
+     https://maps.googleapis.com/maps/api/timezone/json?location=47.01,10.2&timestamp=0&sensor=false
+     {
+     "dstOffset" : 0.0,
+     "rawOffset" : 3600.0,
+     "status" : "OK",
+     "timeZoneId" : "Europe/Vienna", // <--- we need this
+     "timeZoneName" : "Central European Standard Time"
+     }*/
+    JSONDecoder* parser = [JSONDecoder decoder]; // autoreleased
+    NSDictionary *root = [parser objectWithData:data];
+    NSString *status  = [root objectForKey:@"status"];
+    if (![status isEqualToString:@"OK"]) {
+        return nil;
+    }
+    return [root objectForKey:@"timeZoneId"];
+}
+
+- (NSString*) parseGeonamesTimezoneWithData: (NSMutableData*)data
+{
+    /* "The important part of the service is the element 'timezoneId'. The offset is redundant and only included because users have been asking for it. "
+     http://api.geonames.org/timezoneJSON?lat=47.01&lng=10.2&username=rescribble
+     {
+     "time": "2012-11-29 05:37",
+     "countryName": "Austria",
+     "sunset": "2012-11-29 16:32",
+     "rawOffset": 1,
+     "dstOffset": 2,
+     "countryCode": "AT",
+     "gmtOffset": 1,
+     "lng": 10.2,
+     "sunrise": "2012-11-29 07:42",
+     "timezoneId": "Europe/Vienna", // <--- we need this
+     "lat": 47.01
+     }*/
+    JSONDecoder* parser = [JSONDecoder decoder]; // autoreleased
+    NSDictionary *root = [parser objectWithData:data];
+    return [root objectForKey:@"timezoneId"];
+}
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection
 {
-    // Deal with result returned by autocomplete API
     JSONDecoder* parser = [JSONDecoder decoder]; // autoreleased
-    NSDictionary *data = nil;
-    @try {
-        data = [parser objectWithData:responseData];
-    }
-    @catch (NSException *e) {
-        data = nil;
-        NSLog(@"Exception caught while parsing JSON");
-    }
-    NSString *status  = [data objectForKey:@"status"];
-    if (!status || ![status isEqualToString:@"OK"]) {
-        return;
-    }
-    NSDictionary *result = [data objectForKey:@"result"];
-    if (!result) {
-        return;
-    }
+    NSDictionary *data;
     
-    // At this point we simply add extra fields to existing locality object
-    
-    // update locality object in modelDict
     RSLocality *locality = [modelDict objectForKey:_requestedLocalityId];
-    [_requestedLocalityId release];
-    _requestedLocalityId = nil;
-    if (locality) {
-        locality.formatted_address = [result objectForKey:@"formatted_address"];
-        locality.name = [result objectForKey:@"name"];
-        locality.vicinity = [result objectForKey:@"vicinity"];
-        locality.url = [result objectForKey:@"url"];
-        NSDictionary *location = [[result objectForKey:@"geometry"] objectForKey:@"location"];
-        CLLocationCoordinate2D coord2d;
-        coord2d.latitude = [[location objectForKey:@"lat"] doubleValue];
-        coord2d.longitude = [[location objectForKey:@"lng"] doubleValue];
-        locality.coord = coord2d;
-        
-        // save model array
-        [self.delegate saveSettings];
-    }
     
-    //cleanup
-    [responseData release];
-    responseData = nil;
+    if (detailRequestStage == 1) {
+        /* example of Google Places details request:
+         https://maps.googleapis.com/maps/api/place/details/json?reference=CjQoAAAAXIGUBM66O72krkROVuxeF1C8a1I3oGCAPreCfymOCv5j1_N-878qWAM5VZ7CGurAEhBgRi-08zO4dtq3a6oFsg0cGhTgtlBFKTKNesfV8TAIBDzdWETlAg&sensor=true&key=AIzaSyAU8uU4oGLZ7eTEazAf9pOr3qnYVzaYTCc
+         
+         {
+         "html_attributions" : [],
+         "result" : {
+         "address_components" : [
+         {
+         "long_name" : "Zulia",
+         "short_name" : "Zulia",
+         "types" : [ "administrative_area_level_1", "political" ]
+         },
+         {
+         "long_name" : "Venezuela",
+         "short_name" : "VE",
+         "types" : [ "country", "political" ]
+         }
+         ],
+         "adr_address" : "Zulia, \u003cspan class=\"country-name\"\u003eVenezuela\u003c/span\u003e",
+         "formatted_address" : "Zulia, Venezuela",
+         "geometry" : {
+         "location" : {
+         "lat" : 9.9674920,
+         "lng" : -72.52048270
+         },
+         "viewport" : {
+         "northeast" : {
+         "lat" : 11.85527410,
+         "lng" : -70.63522999999999
+         },
+         "southwest" : {
+         "lat" : 8.3876650,
+         "lng" : -73.37431289999999
+         }
+         }
+         },
+         "icon" : "http://maps.gstatic.com/mapfiles/place_api/icons/geocode-71.png",
+         "id" : "fda5bbc8f8e7fcb7aa25ae22931ba883c402a384",
+         "name" : "Zulia",
+         "reference" : "CnRvAAAAodypwrePbuL2Rz_8geio8gp6LXPmrLYybp5-B9I4iSUBmxv7VmaU7vR99GF2O4aLUBr4vaXXXDWlS4awTUxZIpBeG0q4jppaR9tyh0a6T32Itq7e-v70kFDeHRRVV7fZHXOZIWc1_tkwmTPZ0EjTgxIQD7dXGndVUtmnm5vnBjOQXhoU6cNOKLlzeBtIGFIJXzrIKao9jVQ",
+         "types" : [ "administrative_area_level_1", "political" ],
+         "url" : "https://maps.google.com/maps/place?q=Zulia&ftid=0x8e63d2ec3cb2f48d:0xeb0f6a0e4d8f6fc3"
+         },
+         "status" : "OK"
+         }
+         */
+        
+        // Deal with result returned by autocomplete API
+        @try {
+            data = [parser objectWithData:responseData];
+        }
+        @catch (NSException *e) {
+            data = nil;
+            NSLog(@"Exception caught while parsing JSON");
+        }
+        NSString *status  = [data objectForKey:@"status"];
+        if (!status || ![status isEqualToString:@"OK"]) {
+            [responseData release], responseData = nil;
+            return;
+        }
+        NSDictionary *result = [data objectForKey:@"result"];
+        if (!result) {
+            [responseData release], responseData = nil;
+            return;
+        }
+        
+        // At this point we simply add extra fields to existing locality object
+        
+        CLLocationCoordinate2D coord2d = locality.coord;
+        BOOL haveCoord = locality.haveCoord;
+        
+        if (locality) {
+            locality.formatted_address = [result objectForKey:@"formatted_address"];
+            locality.name = [result objectForKey:@"name"];
+            locality.vicinity = [result objectForKey:@"vicinity"];
+            locality.url = [result objectForKey:@"url"];
+            NSDictionary *location = [[result objectForKey:@"geometry"] objectForKey:@"location"];
+            coord2d.latitude = [[location objectForKey:@"lat"] doubleValue];
+            coord2d.longitude = [[location objectForKey:@"lng"] doubleValue];
+            locality.coord = coord2d;
+            haveCoord = YES;
+            
+            // save model array
+            [self.delegate saveSettings];
+        }
+        
+        //cleanup
+        [responseData release], responseData = nil;
+        
+        if (locality.timeZoneId == nil) {
+            
+            // send request to get timezone info
+            detailRequestStage = 2;
+            
+            // prepare another request, to get timezone id
+            responseData = [[NSMutableData data] retain];
+            
+            [theURL release];
+            NSString *urlString = [NSString stringWithFormat:@"https://maps.googleapis.com/maps/api/timezone/json?location=%f,%f&timestamp=0&sensor=true", coord2d.latitude, coord2d.longitude];
+            theURL = [[NSURL URLWithString:urlString] retain];
+            
+            [apiConnection release];
+            apiConnection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:theURL] delegate:self startImmediately: YES];
+        }
+    } else if ( detailRequestStage == 2) {
+        // process request to obtain timezone info
+        detailRequestStage = 0; // reset
+
+        NSString *timeZoneId;
+        @try {
+            timeZoneId = [self parseGoogleTimezoneWithData:responseData];
+        }
+        @catch (NSException *e) {
+            timeZoneId = nil;
+            NSLog(@"Exception caught while parsing JSON");
+        }
+        locality.timeZoneId = timeZoneId;
+        
+        //cleanup
+        [responseData release], responseData = nil;
+    } else {
+        //error
+        detailRequestStage = 0; // reset
+        
+        //cleanup
+        [responseData release], responseData = nil;
+    }
 }
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection
