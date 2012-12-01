@@ -245,9 +245,12 @@
     NSDictionary *country = [self componentWithResults:results ofType:@"country"];
 
     // autoreleased
+    NSString *strNeighborhood = [neighborhood objectForKey:@"long_name"];
+    NSString *strCountryCode = [country objectForKey:@"short_name"];
+    NSLog(@"Location: %@, Country: %@", strNeighborhood, strCountryCode);
     NSMutableDictionary *retValue = [NSMutableDictionary dictionary];
-    [retValue setObject:[neighborhood objectForKey:@"long_name"] forKey:@"neighborhood"];
-    [retValue setObject:[country objectForKey:@"short_name"] forKey:@"countryCode"];
+    [retValue setObject:strNeighborhood forKey:@"neighborhood"];
+    [retValue setObject:strCountryCode forKey:@"countryCode"];
     return retValue;
 }
 
