@@ -125,7 +125,7 @@
     [super dealloc];
 }
 #pragma mark - internals
-- (NSString*)parseGeonamesWithData:(NSMutableData *)data
+- (NSDictionary*)parseGeonamesWithData:(NSMutableData *)data
 {
     /********** Example ***************
      Query: http://api.geonames.org/findNearbyPlaceNameJSON?lat=37.791752&lng=-122.480210&username=rescribble
@@ -152,7 +152,28 @@
      **********************/
     JSONDecoder *parser = [JSONDecoder decoder]; // autoreleased
     NSDictionary *firstLocation = [[[parser objectWithData:data] objectForKey:@"geonames"] objectAtIndex:0];
-    return [firstLocation objectForKey:@"name"];
+    
+    NSMutableDictionary *retValue = [NSMutableDictionary dictionary];
+    [retValue setObject:[firstLocation objectForKey:@"name"] forKey:@"neighborhood"];
+    [retValue setObject:[firstLocation objectForKey:@"countryCode"] forKey:@"countryCode"];
+    return retValue;
+}
+
+- (NSDictionary*)componentWithResult:(NSDictionary *)result ofType:(NSString*)requestedType
+{
+    NSDictionary *neededComponent = nil;
+    NSArray *addressComponents = [result objectForKey:@"address_components"];
+    for (NSDictionary *addressComponent in addressComponents) {
+        NSArray *types = [addressComponent objectForKey:@"types"];
+        for (NSString *type in types) {
+            if ([type isEqualToString:requestedType]) {
+                neededComponent = addressComponent;
+                break;
+            }
+        }
+        if (neededComponent != nil) break;
+    }
+    return neededComponent;
 }
 
 - (NSDictionary*)componentWithResults:(NSArray*)results ofType:(NSString*)requestedType
@@ -160,23 +181,13 @@
     // helper function for parseGooglePlacesWithData
     NSDictionary *neededComponent = nil;
     for (NSDictionary *result in results) {
-        NSArray *addressComponents = [result objectForKey:@"address_components"];
-        for (NSDictionary *addressComponent in addressComponents) {
-            NSArray *types = [addressComponent objectForKey:@"types"];
-            for (NSString *type in types) {
-                if ([type isEqualToString:requestedType]) {
-                    neededComponent = addressComponent;
-                    break;
-                }
-            }
-            if (neededComponent != nil) break;
-        }
+        neededComponent = [self componentWithResult:result ofType:requestedType];
         if (neededComponent != nil) break;
     }
     return neededComponent;
 }
 
-- (NSString*)parseGooglePlacesWithData:(NSMutableData*)data
+- (NSDictionary*)parseGooglePlacesWithData:(NSMutableData*)data
 {
     /*
      Query: http://maps.googleapis.com/maps/api/geocode/json?latlng=37.791752,-122.480210&sensor=true&types=locality&rankby=distance
@@ -222,18 +233,22 @@
     NSArray *results = [root objectForKey:@"results"];
     
     // first try to get neighborhood
-    NSDictionary *neededComponent = [self componentWithResults:results ofType:@"neighborhood"];
-    if (neededComponent == nil) {
+    NSDictionary *neighborhood = [self componentWithResults:results ofType:@"neighborhood"];
+    if (neighborhood == nil) {
         // failing that, look for locality
-        neededComponent = [self componentWithResults:results ofType:@"locality"];
-        if (neededComponent == nil) {
+        neighborhood = [self componentWithResults:results ofType:@"locality"];
+        if (neighborhood == nil) {
             // failing that, look for political
-            neededComponent = [self componentWithResults:results ofType:@"political"];
+            neighborhood = [self componentWithResults:results ofType:@"political"];
         }
     }
-    
-    // neededComponent could still be nil at this point
-    return [neededComponent objectForKey:@"long_name"];
+    NSDictionary *country = [self componentWithResults:results ofType:@"country"];
+
+    // autoreleased
+    NSMutableDictionary *retValue = [NSMutableDictionary dictionary];
+    [retValue setObject:[neighborhood objectForKey:@"long_name"] forKey:@"neighborhood"];
+    [retValue setObject:[country objectForKey:@"short_name"] forKey:@"countryCode"];
+    return retValue;
 }
 
 #pragma mark - NSURLConnection delegate methods
@@ -244,17 +259,17 @@
     NSLog(@"@FindNearbyplace connectionDidFinishLoading");
     
     // get content using JSONKit
-    NSString *placeName;
+    NSDictionary *place;
     @try {
         //placeName = [self parseGeonamesWithData:responseData];
-        placeName = [self parseGooglePlacesWithData:responseData];
+        place = [self parseGooglePlacesWithData:responseData];
     }
     @catch (NSException *e) {
-        placeName = nil;
+        place = nil;
         NSLog(@"Exception caught while parsing JSON");
     }
     
-    [self.delegate findNearbyPlaceDidFinish:placeName];
+    [self.delegate findNearbyPlaceDidFinish:place];
     [responseData release];
     responseData = nil;
 }

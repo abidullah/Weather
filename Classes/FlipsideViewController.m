@@ -349,6 +349,23 @@ forRowAtIndexPath:(NSIndexPath *)indexPath
     return [root objectForKey:@"timezoneId"];
 }
 
+- (NSDictionary*)componentWithResult:(NSDictionary *)result ofType:(NSString*)requestedType
+{
+    NSDictionary *neededComponent = nil;
+    NSArray *addressComponents = [result objectForKey:@"address_components"];
+    for (NSDictionary *addressComponent in addressComponents) {
+        NSArray *types = [addressComponent objectForKey:@"types"];
+        for (NSString *type in types) {
+            if ([type isEqualToString:requestedType]) {
+                neededComponent = addressComponent;
+                break;
+            }
+        }
+        if (neededComponent != nil) break;
+    }
+    return neededComponent;
+}
+
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection
 {
     JSONDecoder* parser = [JSONDecoder decoder]; // autoreleased
@@ -422,6 +439,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath
             [responseData release], responseData = nil;
             return;
         }
+        NSDictionary *country = [self componentWithResult:result ofType:@"country"];
+        NSString *countryCode = [country objectForKey:@"short_name"];
         
         // At this point we simply add extra fields to existing locality object
         
@@ -433,6 +452,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath
             locality.name = [result objectForKey:@"name"];
             locality.vicinity = [result objectForKey:@"vicinity"];
             locality.url = [result objectForKey:@"url"];
+            locality.countryCode = countryCode;
             NSDictionary *location = [[result objectForKey:@"geometry"] objectForKey:@"location"];
             coord2d.latitude = [[location objectForKey:@"lat"] doubleValue];
             coord2d.longitude = [[location objectForKey:@"lng"] doubleValue];

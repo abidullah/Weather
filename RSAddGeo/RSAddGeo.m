@@ -37,6 +37,7 @@
 @synthesize haveCoord;
 @synthesize trackLocation;
 @synthesize timeZoneId;
+@synthesize countryCode;
 
 #pragma mark - Lifecycle
 
@@ -57,6 +58,7 @@
         name = nil;
         vicinity = nil;
         timeZoneId = nil;
+        countryCode = nil;
         //forecastTimestamp = nil;
     }
     return self;
@@ -81,6 +83,7 @@
         name = nil;
         vicinity = nil;
         timeZoneId = nil;
+        countryCode = nil;
         //forecastTimestamp = nil;
     }
     return self;
@@ -96,6 +99,7 @@
     [name release],              name = nil;
     [vicinity release],          vicinity = nil;
     [timeZoneId release],        timeZoneId = nil;
+    [countryCode release],       countryCode = nil;
     //[forecastTimestamp release], forecastTimestamp = nil;
     [super dealloc];
 }
@@ -112,6 +116,12 @@
         if (timeZoneId != locality.timeZoneId) {
             [timeZoneId release];
             timeZoneId = [locality.timeZoneId retain];
+        }
+    }
+    if ([locality.countryCode length] > 0) {
+        if (countryCode != locality.countryCode) {
+            [countryCode release];
+            countryCode = [locality.countryCode retain];
         }
     }
     if (locality.haveCoord == YES) {
@@ -183,6 +193,7 @@
         self.name =              [coder decodeObjectForKey:@"name"];
         self.vicinity =          [coder decodeObjectForKey:@"vicinity"];
         self.timeZoneId =        [coder decodeObjectForKey:@"timeZoneId"];
+        self.countryCode =       [coder decodeObjectForKey:@"countryCode"];
         self.formatted_address = [coder decodeObjectForKey:@"formatted_address"];
         self.description =       [coder decodeObjectForKey:@"description"];
         self.url =               [coder decodeObjectForKey:@"url"];
@@ -204,6 +215,7 @@
     [coder encodeObject:name              forKey:@"name"];
     [coder encodeObject:vicinity          forKey:@"vicinity"];
     [coder encodeObject:timeZoneId        forKey:@"timeZoneId"];
+    [coder encodeObject:countryCode       forKey:@"countryCode"];
     [coder encodeObject:formatted_address forKey:@"formatted_address"];
     [coder encodeObject:description       forKey:@"description"];
     [coder encodeObject:url               forKey:@"url"];
