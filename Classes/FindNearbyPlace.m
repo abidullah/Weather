@@ -27,10 +27,10 @@
     //
     // TODO: consider implementing some way of canceling requests and overriding
     // them with new ones, ot at least some sort of a stack/queue.
-    //
     if (pendingRequest) {
         NSLog(@"Canceling request because one is already pending");
         return;
+        //[apiConnection cancel];
     }
     pendingRequest = YES;
     
