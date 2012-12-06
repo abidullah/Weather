@@ -203,6 +203,7 @@
     }
     return self;
 }
+
 - (void) encodeWithCoder: (NSCoder *)coder
 {
     CLLocationDegrees lat = coord.latitude;
@@ -388,7 +389,6 @@ shouldReloadTableForSearchString:(NSString *)searchString
     apiConnection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:theURL] delegate:self startImmediately: YES];
     return NO;
 }
-
 
 -(BOOL)searchDisplayController:(UISearchDisplayController*)controller
 shouldReloadTableForSearchScope:(NSInteger)searchOption
